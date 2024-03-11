@@ -26,12 +26,38 @@ def pressure_read():
 
     sock.close()
 
-    pressure_reading = (message_received[3] << 0) | (message_received[2] << 8) | \
-    (message_received[1] << 16) | (message_received[0] << 24)
+    pressure_reading = check_crc(message_received)
 
-    pressure_reading = pressure_reading/ (2**20)
+    if pressure_reading:
+        pressure_reading = pressure_reading/(2**20)
+    else:
+        pressure_reading = 0
+
+    # pressure_reading = (message_received[3] << 0) | (message_received[2] << 8) | \
+    # (message_received[1] << 16) | (message_received[0] << 24)
 
     return pressure_reading
+
+
+def check_crc(message):
+    '''
+    '''
+    message_sans_crc = []
+
+    for i in range(len(message)-2):
+        message_sans_crc.append(message[i])
+    
+    crc16_table = crc16_table()
+
+    crc_calc = inficon_crc16(message_sans_crc, len(message_sans_crc),
+                             inficon_init_crc16_table())
+    
+    message_w_crc_calc = struct.pack('<9BH', *message_sans_crc, crc_calc)
+
+    if message_w_crc_calc == message:
+        return message[9:-2]
+    else:
+        return False
 
 
 def message_generator():
@@ -56,16 +82,16 @@ def message_generator():
     crc = inficon_crc16(message_hex, len(message),
                         inficon_init_crc16_table())
     
-    crc_1 = (crc >> 8) & 0xFF
-    crc_2 = crc & 0xFF
+    # crc_1 = (crc >> 8) & 0xFF
+    # crc_2 = crc & 0xFF
 
-    message.append(crc_2) # flipping the high  & low bytes
-    message.append(crc_1)
+    # message.append(crc_2) # flipping the high  & low bytes
+    # message.append(crc_1)
     
-    message_string = ''
+    message_string = struct.pack('<9BH', *message, crc)
 
-    for item in message:
-        message_string += '\\'+ hex(item)[1:]
+    # for item in message:
+    #     message_string += '\\'+ hex(item)[1:]
 
     return message_string
 
@@ -115,12 +141,11 @@ def connection(address = '172.17.1.14', host=4012):
     '''
 
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    sock.setblocking(False)
+    # sock.setblocking(False)
 
     sock.connect((address, host))
 
     return sock
-
 
 
 class PressureIOC(PVGroup):
