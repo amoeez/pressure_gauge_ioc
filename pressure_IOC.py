@@ -26,15 +26,20 @@ def pressure_read():
 
     sock.close()
 
-    pressure_reading = check_crc(message_received)
+    message_verification = check_crc(message_received)
 
-    if pressure_reading:
+    if message_verification:
+        
+        pressure_read_slice = message_received[9:-2]
+
+        pressure_read_hex_values = [item for item in pressure_read_slice]
+
+        pressure_reading = (pressure_read_hex_values[0] << 24) | (pressure_read_hex_values[1] << 16) | \
+            (pressure_read_hex_values[2] << 8) | pressure_read_hex_values[3] << 0
+
         pressure_reading = pressure_reading/(2**20)
     else:
-        pressure_reading = 0
-
-    # pressure_reading = (message_received[3] << 0) | (message_received[2] << 8) | \
-    # (message_received[1] << 16) | (message_received[0] << 24)
+        print('Pressure reading failed')
 
     return pressure_reading
 
@@ -55,12 +60,12 @@ def check_crc(message):
     message_w_crc_calc = struct.pack('<9BH', *message_sans_crc, crc_calc)
 
     if message_w_crc_calc == message:
-        return message[9:-2]
+        return True
     else:
         return False
 
 
-def message_generator():
+def message_generator(): 
     '''
     generates message with crc
 
