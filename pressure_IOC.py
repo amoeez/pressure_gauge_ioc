@@ -2,6 +2,7 @@ from caproto import ChannelData, ChannelType
 from caproto.server import (AsyncLibraryLayer, PVGroup, SubGroup, pvproperty, PvpropertyString,
                             ioc_arg_parser, run, PvpropertyInteger)
 
+import sys
 import socket
 import datetime
 import struct
@@ -11,14 +12,14 @@ import socket
 import struct
 
 
-def pressure_read():
+def pressure_read(address, port):
     '''
     Communicates with the pressure guage
     '''
  
     message = message_generator()
 
-    sock = connection()
+    sock = connection(address, port)
 
     sock.sendall(message.encode())
 
@@ -140,7 +141,7 @@ def inficon_crc16(data, length, crc16_table):
     return crc
 
 
-def connection(address = '172.17.1.14', host=4012):
+def connection(address, port):
     '''
     for now pressure guage address and host is hard-coded
     '''
@@ -148,7 +149,7 @@ def connection(address = '172.17.1.14', host=4012):
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     # sock.setblocking(False)
 
-    sock.connect((address, host))
+    sock.connect((address, port))
 
     return sock
 
@@ -158,8 +159,10 @@ class PressureIOC(PVGroup):
     A group of PVs regarding reading the pressure. 
     """
 
-    def __init__(self, *args, **kwargs) -> None:
+    def __init__(self, address, port, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
+        self.address: str = address
+        self.port: str = port
 
     timestamp = pvproperty(
         value=str(datetime.datetime.utcnow().isoformat() + 'Z'),
@@ -180,14 +183,20 @@ class PressureIOC(PVGroup):
 
     @pressure.scan(period=6)
     async def pressure(self, instance: ChannelData, async_lib: AsyncLibraryLayer):
-        await self.pressure.write(pressure_read())
+        address = self.address.value
+        port = self.port.value
+        await self.pressure.write(pressure_read(address, port))
         await self.timestamp.write(datetime.datetime.utcnow().isoformat() + 'Z')
+
 
 
 if __name__ == '__main__':
 
+    address = sys.argv[1]
+    port = sys.argv[2]
+
     ioc_options, run_options = ioc_arg_parser(
-        default_prefix="pressure:", desc="Pressure sensor")
+        default_prefix="pressure:", port=port, address=address, desc="Pressure sensor")
     
     ioc = PressureIOC(**ioc_options)
     run(ioc.pvdb, **run_options)
