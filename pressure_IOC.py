@@ -1,22 +1,24 @@
-from caproto import ChannelData, ChannelType
-from caproto.server import (AsyncLibraryLayer, PVGroup, SubGroup, pvproperty, PvpropertyString,
-                            ioc_arg_parser, run, PvpropertyInteger)
-
-import sys
-import socket
 import datetime
-import struct
-# from read import pressure_read
-
+import logging
 import socket
 import struct
+import sys
 
+from caproto import ChannelData
+from caproto.server import (
+    AsyncLibraryLayer,
+    PVGroup,
+    pvproperty,
+    PvpropertyString,
+    run,
+    template_arg_parser,
+)
 
 def pressure_read(address, port):
-    '''
+    """
     Communicates with the pressure guage
-    '''
- 
+    """
+
     message = message_generator()
 
     sock = connection(address, port)
@@ -30,35 +32,39 @@ def pressure_read(address, port):
     message_verification = check_crc(message_received)
 
     if message_verification:
-        
+
         pressure_read_slice = message_received[9:-2]
 
         pressure_read_hex_values = [item for item in pressure_read_slice]
 
-        pressure_reading = (pressure_read_hex_values[0] << 24) | (pressure_read_hex_values[1] << 16) | \
-            (pressure_read_hex_values[2] << 8) | pressure_read_hex_values[3] << 0
+        pressure_reading = (
+            (pressure_read_hex_values[0] << 24)
+            | (pressure_read_hex_values[1] << 16)
+            | (pressure_read_hex_values[2] << 8)
+            | pressure_read_hex_values[3] << 0
+        )
 
-        pressure_reading = pressure_reading/(2**20)
+        pressure_reading = pressure_reading / (2**20)
     else:
-        print('Pressure reading failed')
+        print("Pressure reading failed")
 
     return pressure_reading
 
 
 def check_crc(message):
-    '''
-    '''
+    """ """
     message_sans_crc = []
 
-    for i in range(len(message)-2):
+    for i in range(len(message) - 2):
         message_sans_crc.append(message[i])
-    
+
     crc16_table = crc16_table()
 
-    crc_calc = inficon_crc16(message_sans_crc, len(message_sans_crc),
-                             inficon_init_crc16_table())
-    
-    message_w_crc_calc = struct.pack('<9BH', *message_sans_crc, crc_calc)
+    crc_calc = inficon_crc16(
+        message_sans_crc, len(message_sans_crc), inficon_init_crc16_table()
+    )
+
+    message_w_crc_calc = struct.pack("<9BH", *message_sans_crc, crc_calc)
 
     if message_w_crc_calc == message:
         return True
@@ -66,13 +72,13 @@ def check_crc(message):
         return False
 
 
-def message_generator(): 
-    '''
+def message_generator():
+    """
     generates message with crc
 
-    '''
+    """
     message = []
-    
+
     message.append(0)
     message.append(0)
     message.append(0)
@@ -82,19 +88,18 @@ def message_generator():
     message.append(221)
     message.append(0)
     message.append(0)
-    
-    message_hex = struct.pack('9B', *message)
 
-    crc = inficon_crc16(message_hex, len(message),
-                        inficon_init_crc16_table())
-    
+    message_hex = struct.pack("9B", *message)
+
+    crc = inficon_crc16(message_hex, len(message), inficon_init_crc16_table())
+
     # crc_1 = (crc >> 8) & 0xFF
     # crc_2 = crc & 0xFF
 
     # message.append(crc_2) # flipping the high  & low bytes
     # message.append(crc_1)
-    
-    message_string = struct.pack('<9BH', *message, crc)
+
+    message_string = struct.pack("<9BH", *message, crc)
 
     # for item in message:
     #     message_string += '\\'+ hex(item)[1:]
@@ -103,10 +108,10 @@ def message_generator():
 
 
 def inficon_init_crc16_table():
-    '''
+    """
     Code to generate crc16 table
-    '''
-    
+    """
+
     polynomial = 0x8408
     _inficon_crc16_table = [0] * 256
 
@@ -127,13 +132,13 @@ def inficon_init_crc16_table():
 
 
 def inficon_crc16(data, length, crc16_table):
-    '''
+    """
     generates the crc16 code
 
-    '''
+    """
     initial = 0xFFFF
     crc = initial
-    
+
     for i in range(length):
 
         crc = (crc16_table[(crc ^ data[i]) & 0xFF] ^ (crc >> 8)) & 0xFFFF
@@ -142,9 +147,9 @@ def inficon_crc16(data, length, crc16_table):
 
 
 def connection(address, port):
-    '''
+    """
     for now pressure guage address and host is hard-coded
-    '''
+    """
 
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     # sock.setblocking(False)
@@ -156,49 +161,67 @@ def connection(address, port):
 
 class PressureIOC(PVGroup):
     """
-    A group of PVs regarding reading the pressure. 
+    A group of PVs regarding reading the pressure.
     """
 
     def __init__(self, address, port, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self.address: str = address
-        self.port: str = port
+        self.port: int = port
 
     timestamp = pvproperty(
-        value=str(datetime.datetime.utcnow().isoformat() + 'Z'),
+        value=str(datetime.datetime.utcnow().isoformat() + "Z"),
         name="timestamp",
         doc="Timestamp of pressure measurement",
         dtype=PvpropertyString,
-        )
+    )
 
     # @date.scan(period=6)    # every ten minutes
     # async def date(self, instance: ChannelData, async_lib: AsyncLibraryLayer):
     #     await self.date.write(value=str(datetime.date.today()))
 
-    pressure = pvproperty(
-        value = 0.0,
-        name="pressure",
-        units="mbar"
-    )
+    pressure = pvproperty(value=0.0, name="pressure", units="mbar")
 
     @pressure.scan(period=6)
     async def pressure(self, instance: ChannelData, async_lib: AsyncLibraryLayer):
-        address = self.address.value
-        port = self.port.value
+        address = self.address
+        port = self.port
         await self.pressure.write(pressure_read(address, port))
-        await self.timestamp.write(datetime.datetime.utcnow().isoformat() + 'Z')
+        await self.timestamp.write(datetime.datetime.utcnow().isoformat() + "Z")
 
 
+def main(args=None):
 
-if __name__ == '__main__':
+    parser, split_args = template_arg_parser(
+        default_prefix="Pressure Gauge:",
+        desc="EPICS IOC for Inficon Pressure Gauge PCG550! It outputs the pressure in mbar",
+    )
 
-    address = sys.argv[1]
-    port = sys.argv[2]
+    if args is None:
+        args = sys.argv[1:]
 
-    ioc_options, run_options = ioc_arg_parser(
-        default_prefix="pressure:", port=port, address=address, desc="Pressure sensor")
-    
-    ioc = PressureIOC(**ioc_options)
+    # parser = argparse.ArgumentParser(description="EPICS IOC for Inficon Pressure \
+    #                                 Gauge PCG550! It outputs the pressure in mbar")
+    parser.add_argument(
+        "--host", required=True, type=str, help="IP address of the host/device"
+    )
+    parser.add_argument(
+        "--port", required=True, type=int, help="Port number of the device"
+    )
+
+    args = parser.parse_args()
+
+    logging.info("Running pressure gauge IOC")
+
+    # address = args.address
+    # port = args.port
+
+    ioc_options, run_options = split_args(args)
+
+    ioc = PressureIOC(address=args.host, port=args.port, **ioc_options)
     run(ioc.pvdb, **run_options)
 
-    
+
+if __name__ == "__main__":
+
+    main()
