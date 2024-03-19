@@ -23,7 +23,7 @@ def pressure_read(address, port):
 
     sock = connection(address, port)
 
-    sock.sendall(message.encode())
+    sock.sendall(message)
 
     message_received = sock.recv(1024)
 
@@ -64,7 +64,7 @@ def check_crc(message):
         message_sans_crc, len(message_sans_crc), inficon_init_crc16_table()
     )
 
-    message_w_crc_calc = struct.pack("<9BH", *message_sans_crc, crc_calc)
+    message_w_crc_calc = struct.pack("<13BH", *message_sans_crc, crc_calc)
 
     if message_w_crc_calc == message:
         return True
