@@ -14,6 +14,7 @@ from caproto.server import (
     template_arg_parser,
 )
 
+
 def pressure_read(address, port):
     """
     Communicates with the pressure guage
@@ -167,7 +168,7 @@ class PressureIOC(PVGroup):
     def __init__(self, address, port, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self.address: str = address
-        self.port: int = port
+        self.port: str = port
 
     timestamp = pvproperty(
         value=str(datetime.datetime.utcnow().isoformat() + "Z"),
@@ -193,7 +194,7 @@ class PressureIOC(PVGroup):
 def main(args=None):
 
     parser, split_args = template_arg_parser(
-        default_prefix="Pressure Gauge:",
+        default_prefix="Pressure:",
         desc="EPICS IOC for Inficon Pressure Gauge PCG550! It outputs the pressure in mbar",
     )
 
